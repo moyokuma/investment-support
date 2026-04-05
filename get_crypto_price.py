@@ -33,7 +33,7 @@ def send_email_via_graph(config: Dict[str, Any], subject: str, body: str) -> Non
 
     # MSALでアクセストークンを取得
     authority = f"https://login.microsoftonline.com/{tenant_id}"
-    app = ConfidentialClientApplication(client_id, authority=authority, client_secret=client_secret)
+    app = ConfidentialClientApplication(client_id, authority=authority, client_credential=client_secret)
     token_response = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
 
     if "access_token" not in token_response:
