@@ -1,11 +1,11 @@
-# 仮想通貨価格取得ツール (CoinGecko API & Microsoft Graph Email)
+# 仮想通貨価格監視ツール (CoinGecko API & Microsoft Graph Email)
 
-このツールは、CoinGecko APIを使用してビットコイン（BTC）とイーサリアム（ETH）の現在価格（日本円）を取得し、あらかじめ設定した閾値を超えた場合に Microsoft Graph API を通じてメール通知を行います。
+このツールは、CoinGecko APIを使用してビットコイン（BTC）とイーサリアム（ETH）の現在価格（日本円）を取得し、あらかじめ設定した**閾値を下回った場合**に Microsoft Graph API を通じてメール通知を行います。
 
 ## 事前準備
 
 1. **CoinGecko APIキーの取得**
-   https://www.coingecko.com/en/api でAPIキーを取得してください。
+   https://www.coingecko.com/en/api でAPIキーを取得してください（Demo APIキー）。
 
 2. **Microsoft Graph API の設定 (Azure Portal)**
    - Azure Portal (https://portal.azure.com) でアプリ登録を行ってください。
@@ -26,8 +26,8 @@
        "recipient_email": "receiver@anydomain.com"
      },
      "thresholds": {
-       "bitcoin": 10000000,
-       "ethereum": 500000
+       "bitcoin": 8000000,
+       "ethereum": 300000
      }
    }
    ```
@@ -35,19 +35,43 @@
    ※ `config.json` は `.gitignore` に含まれているため、GitHubにはプッシュされません。
 
 4. **仮想環境の作成と有効化**
-   - **Windows:** `python -m venv venv` -> `.\venv\Scripts\activate`
-   - **macOS / Linux:** `python3 -m venv venv` -> `source venv/bin/activate`
+   - **Windows:**
+     ```powershell
+     python -m venv venv
+     .\venv\Scripts\activate
+     ```
+   - **macOS / Linux:**
+     ```bash
+     python3 -m venv venv
+     source venv/bin/activate
+     ```
 
 5. **ライブラリのインストール**
+   仮想環境が有効な状態で、以下のコマンドを実行してください。
    ```bash
    pip install -r requirements.txt
    ```
 
-## 実行方法
+## 自動実行の設定 (Windows)
 
-```bash
-python get_crypto_price.py
+Windows のタスクスケジューラを使用して、09:00 から 23:00 の間で 3 時間ごとに自動実行するように設定できます。
+
+1. **管理者として PowerShell を起動**し、プロジェクトディレクトリへ移動します。
+2. 以下のコマンドを実行して、タスクを登録します。
+   ```powershell
+   .\setup_crypto_task.ps1
+   ```
+
+### タスクの削除
+自動実行を停止したい場合は、以下のコマンドを実行してください。
+```powershell
+.\remove_crypto_task.ps1
 ```
+
+## 仕様
+
+- **判定基準**: 現在価格が `config.json` で指定した `thresholds` の値を**下回った場合**（`<=`）に通知します。
+- **通知方法**: Microsoft Graph API を使用して、指定されたメールアドレスにアラートを送信します。
 
 ## 注意事項
 

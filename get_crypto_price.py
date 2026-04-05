@@ -1,10 +1,23 @@
 import os
 import sys
 import json
+import logging
 import requests
 from typing import Dict, Any
 from coingecko_sdk import Coingecko
 from msal import ConfidentialClientApplication
+
+# ロギングの設定
+LOG_FILE = "crypto_monitor.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def load_config(file_path: str = "config.json") -> Dict[str, Any]:
     """設定ファイルを読み込みます"""
@@ -12,10 +25,10 @@ def load_config(file_path: str = "config.json") -> Dict[str, Any]:
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"エラー: 設定ファイル '{file_path}' が見つかりません。")
+        logger.error(f"設定ファイル '{file_path}' が見つかりません。")
         sys.exit(1)
     except json.JSONDecodeError:
-        print(f"エラー: '{file_path}' の形式が正しくありません。")
+        logger.error(f"'{file_path}' の形式が正しくありません。")
         sys.exit(1)
 
 def send_email_via_graph(config: Dict[str, Any], subject: str, body: str) -> None:
@@ -28,7 +41,7 @@ def send_email_via_graph(config: Dict[str, Any], subject: str, body: str) -> Non
     recipient_email = ms_config.get("recipient_email")
 
     if not all([client_id, tenant_id, client_secret, sender_email, recipient_email]):
-        print("警告: Microsoft Graph の設定が不足しているため、メールを送信できません。")
+        logger.warning("Microsoft Graph の設定が不足しているため、メールを送信できません。")
         return
 
     # MSALでアクセストークンを取得
@@ -37,7 +50,7 @@ def send_email_via_graph(config: Dict[str, Any], subject: str, body: str) -> Non
     token_response = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
 
     if "access_token" not in token_response:
-        print(f"エラー: アクセストークンの取得に失敗しました: {token_response.get('error_description')}")
+        logger.error(f"アクセストークンの取得に失敗しました: {token_response.get('error_description')}")
         return
 
     access_token = token_response["access_token"]
@@ -68,9 +81,9 @@ def send_email_via_graph(config: Dict[str, Any], subject: str, body: str) -> Non
     )
 
     if response.status_code == 202:
-        print(f"メール通知を送信しました: {recipient_email}")
+        logger.info(f"メール通知を送信しました: {recipient_email}")
     else:
-        print(f"エラー: メールの送信に失敗しました ({response.status_code}): {response.text}")
+        logger.error(f"メールの送信に失敗しました ({response.status_code}): {response.text}")
 
 def fetch_crypto_prices() -> None:
     config = load_config()
@@ -78,7 +91,7 @@ def fetch_crypto_prices() -> None:
     # CoinGecko APIキー
     api_key = config.get("coingecko_api_key")
     if not api_key:
-        print("エラー: 'coingecko_api_key' が設定ファイルに記述されていません。")
+        logger.error("'coingecko_api_key' が設定ファイルに記述されていません。")
         sys.exit(1)
 
     client = Coingecko(
@@ -92,7 +105,7 @@ def fetch_crypto_prices() -> None:
             vs_currencies="jpy"
         )
 
-        print("=== 現在の仮想通貨価格 (JPY) ===")
+        logger.info("--- 価格チェック開始 ---")
         thresholds = config.get("thresholds", {})
         alert_messages = []
 
@@ -102,25 +115,27 @@ def fetch_crypto_prices() -> None:
                 coin_data = price_data[coin_id]
                 price = coin_data.jpy
                 
-                print(f"{coin_id.capitalize():<10}: ¥{price:,.0f}")
+                logger.info(f"{coin_id.capitalize():<10}: ¥{price:,.0f}")
                 
-                # 閾値判定
+                # 閾値判定 (閾値を下回った場合)
                 threshold = thresholds.get(coin_id)
-                if threshold and price >= threshold:
-                    msg = f"通知: {coin_id.capitalize()} の価格が閾値 ¥{threshold:,.0f} を超えました (現在: ¥{price:,.0f})"
+                if threshold and price <= threshold:
+                    msg = f"通知: {coin_id.capitalize()} の価格が閾値 ¥{threshold:,.0f} を下回りました (現在: ¥{price:,.0f})"
                     alert_messages.append(msg)
-                    print(f"  [ALERT] {msg}")
+                    logger.warning(f"[ALERT] {msg}")
             except (KeyError, AttributeError):
-                print(f"{coin_id.capitalize():<10}: データの取得に失敗しました。")
+                logger.error(f"{coin_id.capitalize():<10}: データの取得に失敗しました。")
 
-        # 閾値を超えた場合にメール送信
+        # 閾値を下回った場合にメール送信
         if alert_messages:
-            subject = "【仮想通貨アラート】価格が閾値を超えました"
+            subject = "【仮想通貨アラート】価格が閾値を下回りました"
             body = "\n".join(alert_messages)
             send_email_via_graph(config, subject, body)
+        
+        logger.info("--- 価格チェック完了 ---")
 
     except Exception as e:
-        print(f"APIリクエスト中にエラーが発生しました: {e}")
+        logger.error(f"APIリクエスト中にエラーが発生しました: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
