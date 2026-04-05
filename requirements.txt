@@ -1,0 +1,3 @@
+coingecko-sdk
+requests
+msal
